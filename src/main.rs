@@ -1,22 +1,35 @@
+use core::num;
+use std::borrow::Borrow;
 use std::{ops::RangeInclusive, time::Duration};
 use std::path::PathBuf;
 use std::io;
 use std::io::BufRead;
+use std::env;
 use rand::Rng;
 use dialoguer::{theme::ColorfulTheme, Input};
 use clearscreen::clear;
 use std::thread::sleep;
 
+enum GameState {
+    Playing,
+    Won,
+    Lost,
+}
+
 // Game settings
 const NUM_WRONG_GUESSES: usize = 8;
-
+const NOT_A_LOT_OF_GUESSES: usize = 3;
 const RANGE_WORD_LENGTH_ALLOWED: RangeInclusive<usize> = 3..=8;
 
+// Fallible function that tries to return a vector of every line in a file
 fn get_words(path: PathBuf) -> Result<Vec<String>, io::Error> {
     let reader: io::BufReader<std::fs::File> = io::BufReader::new(std::fs::File::open(path)?);
     reader.lines().collect()
 }
 
+// Abstraction to make code more readable,
+// finds a random line in a file and returns it if it's length
+// is within the bounds of the range
 fn find_word(range: &RangeInclusive<usize>, path: PathBuf ) -> Option<String> {
     let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
     let words: Vec<String> = get_words(path).ok()?;
@@ -28,62 +41,93 @@ fn find_word(range: &RangeInclusive<usize>, path: PathBuf ) -> Option<String> {
     };
 }
 
+// Simple function to display only the characters in a specified subset, like this:
+// if word = "hello", and the list contained ['h', 'l'], it would return
+// "h _ l l _ "
 fn generate_hangman_word_display(correct_guesses: &[char], word: &str) -> String {
     let mut correct_letter_display = String::new();
         for character in word.chars() {
             if correct_guesses.contains(&character) {
-                correct_letter_display.push(character);
-                correct_letter_display.push(' ');
+                correct_letter_display.push_str(format!("{} ", character).borrow());
             } else {
-                correct_letter_display.push('_');
-                correct_letter_display.push(' ');
+                correct_letter_display.push_str("_ ");
             }
         }
     correct_letter_display
 }
 
+// Simple function to generate a comma-seperated list of characters
 fn generate_list_of_character_display(characters: &[char]) -> String {
     let mut final_string = String::new();
     for guess in characters.iter().enumerate() {
         if guess.0 == 0 {
             final_string.push(*guess.1);
         } else {
-            final_string.push(',');
-            final_string.push(' ');
-            final_string.push(*guess.1);
+            final_string.push_str(format!(", {}", *guess.1).borrow());
         }
     }
     final_string
 }
 
+// one-time abstraction to make code more readable
+fn suffix(number: usize) -> String {
+    match number {
+        1 => "".to_owned(),
+        _ => "es".to_owned(),
+    }
+}
+
 fn main() {
-    let word = find_word(&RANGE_WORD_LENGTH_ALLOWED, PathBuf::from("./words_alpha.txt")).expect("File doesn't exist or is empty!");
+    // Grab the first argument as the words file or default to './words.txt'
+    let filename: String = env::args().nth(1).unwrap_or_else(|| "./words.txt".to_owned());
+    // Pick a random word within the bounds of the allowed word length from said words file
+    let word = find_word(&RANGE_WORD_LENGTH_ALLOWED, PathBuf::from(filename)).expect("Words file doesn't exist or is empty!");
+
     let mut wrong_guesses: Vec<char> = Vec::<char>::new();
     let mut correct_guesses: Vec<char> = Vec::<char>::new();
+
     clear().expect("failed to clear screen");
 
+    // Game loop
     loop {
-        
 
-        println!("{}\n", generate_hangman_word_display(&correct_guesses, &word));
-        let wrong_guesses_remaining = NUM_WRONG_GUESSES - wrong_guesses.len();
-        if !wrong_guesses.is_empty() && wrong_guesses.len() != NUM_WRONG_GUESSES {
-            println!("Only {} Incorrect Guess{} Left!\n", wrong_guesses_remaining, {
-                match wrong_guesses_remaining {
-                    1 => "",
-                    _ => "es",
-                }
-            });
-            println!("Wrong Guesses: {}\n", generate_list_of_character_display(&wrong_guesses));
-        }
-
+        let state: GameState;
         if correct_guesses.len() == word.len() {
-            println!("You guessed the word!");
-            return
+            state = GameState::Won;
+        } else if wrong_guesses.len() == NUM_WRONG_GUESSES {
+            state = GameState::Lost;
+        } else {
+            state = GameState::Playing;
         }
-        if wrong_guesses.len() == NUM_WRONG_GUESSES {
-            println!("You failed, the word was {}\n", word);
-            return
+
+        let wrong_guesses_remaining = NUM_WRONG_GUESSES - wrong_guesses.len();
+        match state {
+            GameState::Playing => {
+                println!("{}\n", generate_hangman_word_display(&correct_guesses, &word));
+
+                if !wrong_guesses.is_empty() {
+
+                    if wrong_guesses_remaining > NOT_A_LOT_OF_GUESSES {
+                        println!("{} Incorrect Guess Remaining.\n", wrong_guesses_remaining);
+                    } else {
+                        println!("Only {} Incorrect Guess{} Left!\n", wrong_guesses_remaining, suffix(wrong_guesses_remaining));
+                    }
+
+                    println!("Wrong Guesses: {}\n", generate_list_of_character_display(&wrong_guesses));
+                }
+            }
+
+            GameState::Won => {
+                println!("You guessed the word! with {} incorrect guesses remaining!", wrong_guesses_remaining);
+                sleep(Duration::from_secs(1));
+                return
+            }
+
+            GameState::Lost => {
+                println!("You failed, the word was {}\n", word);
+                sleep(Duration::from_secs(1));
+                return
+            }
         }
 
         // Logic & Boilerplate to take specific character input, ignore.
@@ -106,13 +150,11 @@ fn main() {
                                         })
                                         .interact_text()
                                         .unwrap()
-                                        .chars().collect::<Vec<char>>()[0]
+                                        .chars().next().unwrap()
                                         .to_ascii_lowercase();
     
-        let mut num_occurances = 0;
-        for character in word.chars() {
-            if character == guess {num_occurances += 1;}
-        }
+        
+        let num_occurances = word.matches(guess).count();
         if num_occurances == 0 {
             wrong_guesses.push(guess);
             println!("Wrong!");
