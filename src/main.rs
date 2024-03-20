@@ -8,6 +8,7 @@ use rand::Rng;
 use dialoguer::{theme::ColorfulTheme, Input};
 use clearscreen::clear;
 use std::thread::sleep;
+use std::fmt::Write;
 
 enum GameState {
     Playing,
@@ -75,12 +76,16 @@ fn suffix(number: usize) -> String {
         _ => "es".to_owned(),
     }
 }
-
 fn main() {
     // Grab the first argument as the words file or default to './words.txt'
-    let filename: String = env::args().nth(1).unwrap_or_else(|| "./words.txt".to_owned());
+    let filename = env::args().nth(1).unwrap_or_else(|| "./words.txt".to_owned());
     // Pick a random word within the bounds of the allowed word length from said words file
-    let word = find_word(&RANGE_WORD_LENGTH_ALLOWED, PathBuf::from(filename)).expect("Words file doesn't exist or is empty!");
+    let word = if let Some(word) = find_word(&RANGE_WORD_LENGTH_ALLOWED, PathBuf::from(&filename)) {
+        word
+    } else {
+        println!("File {} doesn't exist or doesn't contain words matching the length criteria of {} to {}", filename, RANGE_WORD_LENGTH_ALLOWED.start(), RANGE_WORD_LENGTH_ALLOWED.end());
+        return
+    };
 
     let mut wrong_guesses: Vec<char> = Vec::<char>::new();
     let mut correct_guesses: Vec<char> = Vec::<char>::new();
@@ -115,9 +120,11 @@ fn main() {
                     println!("Wrong Guesses: {}\n", generate_list_of_character_display(&wrong_guesses));
                 }
             }
-
+            
             GameState::Won => {
-                println!("You guessed the word! with {} incorrect guesses remaining!", wrong_guesses_remaining);
+                println!("{}\n", word.chars().fold(String::new(), |mut output, character| {let _ = write!(output, "{} ", character); output}));
+                println!("You guessed the word\n{} incorrect guesses, with {} wrong guesses remaining", wrong_guesses.len(), wrong_guesses_remaining);
+
                 sleep(Duration::from_secs(1));
                 return
             }
