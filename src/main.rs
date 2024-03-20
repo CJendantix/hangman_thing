@@ -76,6 +76,7 @@ fn suffix(number: usize) -> String {
         _ => "es".to_owned(),
     }
 }
+
 fn main() {
     // Grab the first argument as the words file or default to './words.txt'
     let filename = env::args().nth(1).unwrap_or_else(|| "./words.txt".to_owned());
@@ -123,7 +124,7 @@ fn main() {
             
             GameState::Won => {
                 println!("{}\n", word.chars().fold(String::new(), |mut output, character| {let _ = write!(output, "{} ", character); output}));
-                println!("You guessed the word\n{} incorrect guesses, with {} wrong guesses remaining", wrong_guesses.len(), wrong_guesses_remaining);
+                println!("You guessed the word\n{} incorrect guesses, with {} wrong guess{} remaining", wrong_guesses.len(), wrong_guesses_remaining, suffix(wrong_guesses_remaining));
 
                 sleep(Duration::from_secs(1));
                 return
