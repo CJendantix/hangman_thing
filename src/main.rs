@@ -113,7 +113,7 @@ fn main() {
                 if !wrong_guesses.is_empty() {
 
                     if wrong_guesses_remaining > NOT_A_LOT_OF_GUESSES {
-                        println!("{} Incorrect Guess Remaining.\n", wrong_guesses_remaining);
+                        println!("{} Incorrect Guess{} Remaining.\n", wrong_guesses_remaining, suffix(wrong_guesses_remaining));
                     } else {
                         println!("Only {} Incorrect Guess{} Left!\n", wrong_guesses_remaining, suffix(wrong_guesses_remaining));
                     }
