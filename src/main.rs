@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::{ops::RangeInclusive, time::Duration};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::io;
 use std::io::BufRead;
 use std::env;
@@ -18,11 +18,11 @@ enum GameState {
 
 // Game settings
 const NUM_WRONG_GUESSES: usize = 8;
-const NOT_A_LOT_OF_GUESSES: usize = 3;
 const RANGE_WORD_LENGTH_ALLOWED: RangeInclusive<usize> = 3..=8;
+const NOT_A_LOT_OF_GUESSES: usize = 3;
 
 // Fallible function that tries to return a vector of every line in a file
-fn get_words(path: PathBuf) -> Result<Vec<String>, io::Error> {
+fn get_words(path: &Path) -> Result<Vec<String>, io::Error> {
     let reader: io::BufReader<std::fs::File> = io::BufReader::new(std::fs::File::open(path)?);
     reader.lines().collect()
 }
@@ -30,12 +30,12 @@ fn get_words(path: PathBuf) -> Result<Vec<String>, io::Error> {
 // Abstraction to make code more readable,
 // finds a random line in a file and returns it if it's length
 // is within the bounds of the range
-fn find_word(range: &RangeInclusive<usize>, path: PathBuf ) -> Option<String> {
+fn get_word(word_length: &RangeInclusive<usize>, file_path: &Path ) -> Option<String> {
     let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
-    let words: Vec<String> = get_words(path).ok()?;
+    let words: Vec<String> = get_words(&file_path).ok()?;
     loop {
         let word: &String = &words[rng.gen_range(0..words.len())];
-        if range.contains(&word.len()) {
+        if word_length.contains(&word.len()) {
             return Some(word.to_string());
         }
     };
@@ -80,8 +80,9 @@ fn suffix(number: usize) -> String {
 fn main() {
     // Grab the first argument as the words file or default to './words.txt'
     let filename = env::args().nth(1).unwrap_or_else(|| "./words.txt".to_owned());
+    
     // Pick a random word within the bounds of the allowed word length from said words file
-    let word = if let Some(word) = find_word(&RANGE_WORD_LENGTH_ALLOWED, PathBuf::from(&filename)) {
+    let word = if let Some(word) = get_word(&RANGE_WORD_LENGTH_ALLOWED, Path::new(&filename)) {
         word
     } else {
         println!("File {} doesn't exist or doesn't contain words matching the length criteria of {} to {}", filename, RANGE_WORD_LENGTH_ALLOWED.start(), RANGE_WORD_LENGTH_ALLOWED.end());
