@@ -26,8 +26,8 @@ fn main() {
     let correct_letters: String = args.info.chars().filter(|c| *c != '_').collect();
     let re = {
         if !correct_letters.is_empty() {
-            Regex::new(
-            args.info.chars().map(|c| 
+            Regex::new( 
+                args.info.chars().map(|c| 
                 if c == '_' {
                     format!("[^{}]", correct_letters)
                 } else {
