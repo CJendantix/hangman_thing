@@ -1,14 +1,28 @@
 use std::borrow::Borrow;
+use std::num::ParseIntError;
 use std::{ops::RangeInclusive, time::Duration};
 use std::path::Path;
 use std::io;
 use std::io::BufRead;
-use std::env;
 use rand::Rng;
 use dialoguer::{theme::ColorfulTheme, Input};
 use clearscreen::clear;
+use snafu::{OptionExt, ResultExt, Snafu};
 use std::thread::sleep;
 use std::fmt::Write;
+use clap::Parser;
+
+#[derive(Parser)]
+struct Args {
+    #[arg(short = 'f', long = "filename", default_value_t = String::from("./words.txt")) ]
+    filename: String,
+
+    #[arg(short = 'g', long = "wrong_guesses", default_value_t = 8)]
+    wrong_guesses_allowed: usize,
+
+    #[arg(short = 'l', long = "word_length", default_value = "3:8", value_parser = parse_range)]
+    word_length_range: RangeInclusive<usize>,
+}
 
 enum GameState {
     Playing,
@@ -16,10 +30,30 @@ enum GameState {
     Lost,
 }
 
-// Game settings
-const NUM_WRONG_GUESSES: usize = 8;
-const RANGE_WORD_LENGTH_ALLOWED: RangeInclusive<usize> = 3..=8;
-const NOT_A_LOT_OF_GUESSES: usize = 3;
+#[derive(Debug, Snafu)]
+enum ParseRangeError {
+    #[snafu(display("No ':' in range {unsplittable_string} (should be x:y)"))]
+    Split { unsplittable_string: String },
+
+    #[snafu(display("Too many colons in {unsplittable_string}"))]
+    TooManyValues { unsplittable_string: String },
+
+    #[snafu(display("Failed to parse {unparseable_integer_string} into an integer"))]
+    Parse { source: ParseIntError, unparseable_integer_string: String }
+}
+
+fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
+    let found: Vec<&str> = argument.split(':').collect();
+    if found.len() > 2 {
+        return Err(ParseRangeError::TooManyValues { unsplittable_string: argument.to_owned() })
+    }
+    if found.is_empty() {
+        return Err(ParseRangeError::Split { unsplittable_string: argument.to_owned() })
+    }
+
+    let [start, end] = [found[0], found[1]].map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { unparseable_integer_string: s}));
+    Ok(start?..=end?)
+}
 
 // Fallible function that tries to return a vector of every line in a file
 fn get_words(path: &Path) -> Result<Vec<String>, io::Error> {
@@ -32,7 +66,7 @@ fn get_words(path: &Path) -> Result<Vec<String>, io::Error> {
 // is within the bounds of the range
 fn get_word(word_length: &RangeInclusive<usize>, file_path: &Path ) -> Option<String> {
     let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
-    let words: Vec<String> = get_words(&file_path).ok()?;
+    let words: Vec<String> = get_words(file_path).ok()?;
     loop {
         let word: &String = &words[rng.gen_range(0..words.len())];
         if word_length.contains(&word.len()) {
@@ -78,14 +112,13 @@ fn suffix(number: usize) -> String {
 }
 
 fn main() {
-    // Grab the first argument as the words file or default to './words.txt'
-    let filename = env::args().nth(1).unwrap_or_else(|| "./words.txt".to_owned());
-    
+    let args = Args::parse();
+
     // Pick a random word within the bounds of the allowed word length from said words file
-    let word = if let Some(word) = get_word(&RANGE_WORD_LENGTH_ALLOWED, Path::new(&filename)) {
+    let word = if let Some(word) = get_word(&args.word_length_range, Path::new(&args.filename)) {
         word
     } else {
-        println!("File {} doesn't exist or doesn't contain words matching the length criteria of {} to {}", filename, RANGE_WORD_LENGTH_ALLOWED.start(), RANGE_WORD_LENGTH_ALLOWED.end());
+        println!("File {} doesn't exist or doesn't contain words matching the length criteria of {} to {}", args.filename, args.word_length_range.start(), args.word_length_range.end());
         return
     };
 
@@ -100,20 +133,20 @@ fn main() {
         let state: GameState;
         if correct_guesses.len() == word.len() {
             state = GameState::Won;
-        } else if wrong_guesses.len() == NUM_WRONG_GUESSES {
+        } else if wrong_guesses.len() == args.wrong_guesses_allowed {
             state = GameState::Lost;
         } else {
             state = GameState::Playing;
         }
 
-        let wrong_guesses_remaining = NUM_WRONG_GUESSES - wrong_guesses.len();
+        let wrong_guesses_remaining = args.wrong_guesses_allowed - wrong_guesses.len();
         match state {
             GameState::Playing => {
                 println!("{}\n", generate_hangman_word_display(&correct_guesses, &word));
 
                 if !wrong_guesses.is_empty() {
 
-                    if wrong_guesses_remaining > NOT_A_LOT_OF_GUESSES {
+                    if wrong_guesses_remaining > 3 {
                         println!("{} Incorrect Guess{} Remaining.\n", wrong_guesses_remaining, suffix(wrong_guesses_remaining));
                     } else {
                         println!("Only {} Incorrect Guess{} Left!\n", wrong_guesses_remaining, suffix(wrong_guesses_remaining));
