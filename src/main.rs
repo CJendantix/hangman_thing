@@ -7,7 +7,7 @@ use std::io::BufRead;
 use rand::Rng;
 use dialoguer::{theme::ColorfulTheme, Input};
 use clearscreen::clear;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use std::thread::sleep;
 use std::fmt::Write;
 use clap::Parser;
