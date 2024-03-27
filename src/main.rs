@@ -14,7 +14,7 @@ use clap::Parser;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(short = 'f', long = "filename", default_value_t = String::from("./words.txt")) ]
+    #[arg(short = 'f', long = "filename", default_value = "./words.txt") ]
     filename: String,
 
     #[arg(short = 'g', long = "wrong_guesses", default_value_t = 8)]
@@ -103,6 +103,31 @@ fn generate_list_of_character_display(characters: &[char]) -> String {
     final_string
 }
 
+fn validate_input(input: &String, wrong_guesses: &[char], correct_guesses: &[char]) -> Result<(), &'static str>{
+    let input = input.to_ascii_lowercase();
+    let mut all_good = true;
+    let mut message: &str = "Unexpected Error";
+
+    if input.len() != 1 
+    {
+        all_good = false;
+        message = "Input must be one character";
+    }
+
+    if wrong_guesses.contains(&input.chars().next().unwrap()) 
+    || correct_guesses.contains(&input.chars().next().unwrap()) 
+    {
+        all_good = false;
+        message = "You gave a previously revealed answer, ya dunce!"
+    }
+
+    if all_good {
+        Ok(())
+    } else {
+        Err(message)
+    }
+}
+
 // one-time abstraction to make code more readable
 fn suffix(number: usize) -> String {
     match number {
@@ -171,29 +196,13 @@ fn main() {
             }
         }
 
-        // Logic & Boilerplate to take specific character input, ignore.
         let guess: char = Input::<String>::with_theme(&ColorfulTheme::default())
                                         .with_prompt("Enter a guess")
-                                        .validate_with(|input: &String| -> Result<(), &str> {
-                                            let input = input.to_ascii_lowercase();
-                                            let mut all_good = true;
-                                            let mut message: &str = "Unexpected Error";
-                                            if input.len() != 1 {
-                                                all_good = false;
-                                                message = "Input must be one character";
-                                            } else if wrong_guesses.contains(&input.chars().collect::<Vec<char>>()[0]) || correct_guesses.contains(&input.chars().collect::<Vec<char>>()[0]){
-                                                all_good = false;
-                                                message = "You gave a previously revealed answer, ya dunce!"
-                                            }
-                                            if all_good {Ok(())} else {
-                                                Err(message)
-                                            }
-                                        })
+                                        .validate_with(|s: &String| validate_input(s, &wrong_guesses, &correct_guesses))
                                         .interact_text()
                                         .unwrap()
                                         .chars().next().unwrap()
                                         .to_ascii_lowercase();
-    
         
         let num_occurances = word.matches(guess).count();
         if num_occurances == 0 {

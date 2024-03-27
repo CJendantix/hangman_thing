@@ -6,7 +6,7 @@ use clap::Parser;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(short = 'f', long = "filename", default_value_t = String::from("./words.txt")) ]
+    #[arg(short = 'f', long = "filename", default_value = "./words.txt") ]
     filename: String,
 
     #[arg(short = 'i', long = "current_info")]
