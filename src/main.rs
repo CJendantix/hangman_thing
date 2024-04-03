@@ -40,7 +40,8 @@ enum ParseRangeError {
 
 fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
     let found: Vec<&str> = argument.split(':').collect();
-    if found.len() != 2 || !found.iter().all(|s| s.is_empty()) {
+    if found.len() != 2
+    || found.iter().copied().any(|s| s.is_empty()) {
         return Err(ParseRangeError::Format { unsplittable_string: argument.to_owned() })
     }
 
