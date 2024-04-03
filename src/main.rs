@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::num::ParseIntError;
 use std::{ops::RangeInclusive, time::Duration};
 use std::path::Path;
@@ -82,7 +81,7 @@ fn generate_hangman_word_display(correct_guesses: &[char], word: &str) -> String
     let mut correct_letter_display = String::new();
         for character in word.chars() {
             if correct_guesses.contains(&character) {
-                correct_letter_display.push_str(format!("{} ", character).borrow());
+                correct_letter_display.push_str(format!("{} ", character).as_str());
             } else {
                 correct_letter_display.push_str("_ ");
             }
@@ -97,7 +96,7 @@ fn generate_list_of_character_display(characters: &[char]) -> String {
         if guess.0 == 0 {
             final_string.push(*guess.1);
         } else {
-            final_string.push_str(format!(", {}", *guess.1).borrow());
+            final_string.push_str(format!(", {}", *guess.1).as_str());
         }
     }
     final_string
