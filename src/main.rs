@@ -31,26 +31,21 @@ enum GameState {
 
 #[derive(Debug, Snafu)]
 enum ParseRangeError {
-    #[snafu(display("No ':' in range {unsplittable_string} (should be x:y)"))]
-    Split { unsplittable_string: String },
+    #[snafu(display("Invalid Format '{unsplittable_string}' (should be x:y)"))]
+    Format { unsplittable_string: String },
 
-    #[snafu(display("Too many colons in {unsplittable_string}"))]
-    TooManyValues { unsplittable_string: String },
-
-    #[snafu(display("Failed to parse {unparseable_integer_string} into an integer"))]
+    #[snafu(display("Failed to parse '{unparseable_integer_string}' into an integer"))]
     Parse { source: ParseIntError, unparseable_integer_string: String }
 }
 
 fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
     let found: Vec<&str> = argument.split(':').collect();
-    if found.len() > 2 {
-        return Err(ParseRangeError::TooManyValues { unsplittable_string: argument.to_owned() })
-    }
-    if found.is_empty() {
-        return Err(ParseRangeError::Split { unsplittable_string: argument.to_owned() })
+    if found.len() != 2 || !found.iter().all(|s| s.is_empty()) {
+        return Err(ParseRangeError::Format { unsplittable_string: argument.to_owned() })
     }
 
-    let [start, end] = [found[0], found[1]].map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { unparseable_integer_string: s}));
+    let [start, end] = [found[0], found[1]]
+    .map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { unparseable_integer_string: s}));
     Ok(start?..=end?)
 }
 
