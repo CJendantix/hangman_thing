@@ -31,23 +31,32 @@ enum GameState {
 
 #[derive(Debug, Snafu)]
 enum ParseRangeError {
-    #[snafu(display("Invalid Format '{unsplittable_string}' (should be x:y)"))]
-    Format { unsplittable_string: String },
+    #[snafu(display("Invalid Format '{value}' (should be x:y)"))]
+    Format { value: String },
 
-    #[snafu(display("Failed to parse '{unparseable_integer_string}' into an integer"))]
-    Parse { source: ParseIntError, unparseable_integer_string: String }
+    #[snafu(display("Failed to parse '{value}' into an integer"))]
+    Parse { source: ParseIntError, value: String },
+
+    #[snafu(display("The first range bound cannot be larger than the second '{}:{}'", value[0], value[1]))]
+    StartOutOfBounds { value: [usize; 2] },
 }
 
 fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
     let found: Vec<&str> = argument.split(':').collect();
     if found.len() != 2
     || found.iter().copied().any(|s| s.is_empty()) {
-        return Err(ParseRangeError::Format { unsplittable_string: argument.to_owned() })
+        return Err(ParseRangeError::Format { value: argument.to_owned() })
     }
 
     let [start, end] = [found[0], found[1]]
-    .map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { unparseable_integer_string: s}));
-    Ok(start?..=end?)
+    .map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { value: s}));
+    let [start, end] = [start?, end?];
+
+    if start > end {
+        return Err(ParseRangeError::StartOutOfBounds { value: [start, end] })
+    }
+    
+    Ok(start..=end)
 }
 
 // Fallible function that tries to return a vector of every line in a file
