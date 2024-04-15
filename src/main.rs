@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::num::ParseIntError;
 use std::{ops::RangeInclusive, time::Duration};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::io;
 use std::io::BufRead;
 use rand::Rng;
@@ -42,6 +42,15 @@ enum ParseRangeError {
     Parse { source: ParseIntError, unparseable_integer_string: String }
 }
 
+#[derive(Debug, Snafu)]
+enum GetWordsError {
+    #[snafu(display("Problem Opening the words list"))]
+    Unexpected { source: io::Error, unopenable_file: PathBuf },
+
+    #[snafu(display("Words List is empty!"))]
+    Empty { empty_file: PathBuf }
+}
+
 fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
     let found: Vec<&str> = argument.split(':').collect();
     if found.len() > 2 {
@@ -56,21 +65,29 @@ fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError>
 }
 
 // Fallible function that tries to return a vector of every line in a file
-fn get_words(path: &Path) -> Result<Vec<String>, io::Error> {
-    let reader: io::BufReader<std::fs::File> = io::BufReader::new(std::fs::File::open(path)?);
-    reader.lines().collect()
+fn get_words(path: &Path) -> Result<Vec<String>, GetWordsError> {
+    let reader = io::BufReader::new(std::fs::File::open(path).with_context(|_| UnexpectedSnafu { unopenable_file: path })?);
+
+    let lines = reader.lines().collect::<Result<Vec<String>, io::Error>>()
+        .with_context(|_| UnexpectedSnafu { unopenable_file: path })?;
+    
+    if lines.is_empty() {
+        Err( GetWordsError::Empty { empty_file: PathBuf::from(path) } )
+    } else {
+        Ok( lines )
+    }
 }
 
 // Abstraction to make code more readable,
 // finds a random line in a file and returns it if it's length
 // is within the bounds of the range
-fn get_word(word_length: &RangeInclusive<usize>, file_path: &Path ) -> Option<String> {
+fn get_word(word_length: &RangeInclusive<usize>, file_path: &Path ) -> Result<String, GetWordsError> {
     let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
-    let words: Vec<String> = get_words(file_path).ok()?;
+    let words: Vec<String> = get_words(file_path)?;
     loop {
         let word: &String = &words[rng.gen_range(0..words.len())];
         if word_length.contains(&word.len()) {
-            return Some(word.to_string());
+            return Ok(word.to_string());
         }
     };
 }
@@ -103,28 +120,14 @@ fn generate_list_of_character_display(characters: &[char]) -> String {
     final_string
 }
 
-fn validate_input(input: &String, wrong_guesses: &[char], correct_guesses: &[char]) -> Result<(), &'static str>{
-    let input = input.to_ascii_lowercase();
-    let mut all_good = true;
-    let mut message: &str = "Unexpected Error";
+fn validate_input(input: &str, wrong_guesses: &[char], correct_guesses: &[char]) -> Result<(), &'static str>{
+    let input = input.to_lowercase();
 
-    if input.len() != 1 
+    if !input.chars().any( |c| wrong_guesses.contains(&c) || correct_guesses.contains(&c) )
     {
-        all_good = false;
-        message = "Input must be one character";
-    }
-
-    if wrong_guesses.contains(&input.chars().next().unwrap()) 
-    || correct_guesses.contains(&input.chars().next().unwrap()) 
-    {
-        all_good = false;
-        message = "You gave a previously revealed answer, ya dunce!"
-    }
-
-    if all_good {
         Ok(())
     } else {
-        Err(message)
+        Err("You gave a previously revealed answer, ya dunce!")
     }
 }
 
@@ -136,16 +139,12 @@ fn suffix(number: usize) -> String {
     }
 }
 
-fn main() {
+#[snafu::report]
+fn main() -> Result<(), GetWordsError> {
     let args = Args::parse();
 
     // Pick a random word within the bounds of the allowed word length from said words file
-    let word = if let Some(word) = get_word(&args.word_length_range, Path::new(&args.filename)) {
-        word
-    } else {
-        println!("File {} doesn't exist or doesn't contain words matching the length criteria of {} to {}", args.filename, args.word_length_range.start(), args.word_length_range.end());
-        return
-    };
+    let word = get_word(&args.word_length_range, Path::new(&args.filename))?;
 
     let mut wrong_guesses: Vec<char> = Vec::<char>::new();
     let mut correct_guesses: Vec<char> = Vec::<char>::new();
@@ -155,14 +154,14 @@ fn main() {
     // Game loop
     loop {
 
-        let state: GameState;
-        if correct_guesses.len() == word.len() {
-            state = GameState::Won;
-        } else if wrong_guesses.len() == args.wrong_guesses_allowed {
-            state = GameState::Lost;
+        use GameState as GS;
+        let state: GS = if correct_guesses.len() >= word.len() {
+            GS::Won
+        } else if wrong_guesses.len() >= args.wrong_guesses_allowed {
+            GS::Lost
         } else {
-            state = GameState::Playing;
-        }
+            GS::Playing
+        };
 
         let wrong_guesses_remaining = args.wrong_guesses_allowed - wrong_guesses.len();
         match state {
@@ -181,41 +180,39 @@ fn main() {
                 }
             }
             
-            GameState::Won => {
+            GS::Won => {
                 println!("{}\n", word.chars().fold(String::new(), |mut output, character| {let _ = write!(output, "{} ", character); output}));
                 println!("You guessed the word\n{} incorrect guesses, with {} wrong guess{} remaining", wrong_guesses.len(), wrong_guesses_remaining, suffix(wrong_guesses_remaining));
 
                 sleep(Duration::from_secs(1));
-                return
+                return Ok(())
             }
 
-            GameState::Lost => {
+            GS::Lost => {
                 println!("You failed, the word was {}\n", word);
                 sleep(Duration::from_secs(1));
-                return
+                return Ok(())
             }
         }
 
-        let guess: char = Input::<String>::with_theme(&ColorfulTheme::default())
+        let guess = Input::<String>::with_theme(&ColorfulTheme::default())
                                         .with_prompt("Enter a guess")
                                         .validate_with(|s: &String| validate_input(s, &wrong_guesses, &correct_guesses))
                                         .interact_text()
                                         .unwrap()
-                                        .chars().next().unwrap()
-                                        .to_ascii_lowercase();
+                                        .to_lowercase();
         
-        let num_occurances = word.matches(guess).count();
-        if num_occurances == 0 {
-            wrong_guesses.push(guess);
-            println!("Wrong!");
-            sleep(Duration::from_secs(1));
-        } else {
-            for _ in 0..num_occurances {
-                correct_guesses.push(guess);
+        let amount_correct_guesses_old = correct_guesses.len();
+        let amount_wrong_guesses_old = wrong_guesses.len();
+        for letter in guess.chars() {
+            if word.contains(letter) {
+                correct_guesses.push(letter);
+            } else {
+                wrong_guesses.push(letter);
             }
-            println!("Correct!");
-            sleep(Duration::from_secs(1));
         }
+        println!("{} Letters correct & {} letters wrong.", correct_guesses.len() - amount_correct_guesses_old, wrong_guesses.len() - amount_wrong_guesses_old);
+        sleep(Duration::from_secs(1));
 
         clear().expect("failed to clear screen");
     }
