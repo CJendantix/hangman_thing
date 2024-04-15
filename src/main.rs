@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::num::ParseIntError;
 use std::{ops::RangeInclusive, time::Duration};
 use std::path::{Path, PathBuf};
@@ -32,14 +31,14 @@ enum GameState {
 
 #[derive(Debug, Snafu)]
 enum ParseRangeError {
-    #[snafu(display("No ':' in range {unsplittable_string} (should be x:y)"))]
-    Split { unsplittable_string: String },
+    #[snafu(display("Invalid Format '{value}' (should be x:y)"))]
+    Format { value: String },
 
-    #[snafu(display("Too many colons in {unsplittable_string}"))]
-    TooManyValues { unsplittable_string: String },
+    #[snafu(display("Failed to parse '{value}' into an integer"))]
+    Parse { source: ParseIntError, value: String },
 
-    #[snafu(display("Failed to parse {unparseable_integer_string} into an integer"))]
-    Parse { source: ParseIntError, unparseable_integer_string: String }
+    #[snafu(display("The first range bound cannot be larger than the second '{}:{}'", value[0], value[1]))]
+    StartOutOfBounds { value: [usize; 2] },
 }
 
 #[derive(Debug, Snafu)]
@@ -53,15 +52,20 @@ enum GetWordsError {
 
 fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
     let found: Vec<&str> = argument.split(':').collect();
-    if found.len() > 2 {
-        return Err(ParseRangeError::TooManyValues { unsplittable_string: argument.to_owned() })
-    }
-    if found.is_empty() {
-        return Err(ParseRangeError::Split { unsplittable_string: argument.to_owned() })
+    if found.len() != 2
+    || found.iter().copied().any(|s| s.is_empty()) {
+        return Err(ParseRangeError::Format { value: argument.to_owned() })
     }
 
-    let [start, end] = [found[0], found[1]].map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { unparseable_integer_string: s}));
-    Ok(start?..=end?)
+    let [start, end] = [found[0], found[1]]
+    .map(|s| s.parse::<usize>().with_context(|_| ParseSnafu { value: s}));
+    let [start, end] = [start?, end?];
+
+    if start > end {
+        return Err(ParseRangeError::StartOutOfBounds { value: [start, end] })
+    }
+    
+    Ok(start..=end)
 }
 
 // Fallible function that tries to return a vector of every line in a file
@@ -99,7 +103,7 @@ fn generate_hangman_word_display(correct_guesses: &[char], word: &str) -> String
     let mut correct_letter_display = String::new();
         for character in word.chars() {
             if correct_guesses.contains(&character) {
-                correct_letter_display.push_str(format!("{} ", character).borrow());
+                correct_letter_display.push_str(format!("{} ", character).as_str());
             } else {
                 correct_letter_display.push_str("_ ");
             }
@@ -114,7 +118,7 @@ fn generate_list_of_character_display(characters: &[char]) -> String {
         if guess.0 == 0 {
             final_string.push(*guess.1);
         } else {
-            final_string.push_str(format!(", {}", *guess.1).borrow());
+            final_string.push_str(format!(", {}", *guess.1).as_str());
         }
     }
     final_string
