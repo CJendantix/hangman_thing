@@ -130,13 +130,22 @@ fn character_list_display(characters: &[char]) -> String {
 
 fn validate_input(input: &str, wrong_guesses: &[char], correct_guesses: &[char]) -> Result<(), &'static str>{
     let input = input.to_lowercase();
+    let character = input.chars().next().unwrap();
+    let mut message = "";
 
-    if !input.chars().any( |c| wrong_guesses.contains(&c) || correct_guesses.contains(&c) )
-    {
-        Ok(())
-    } else {
-        Err("You gave a previously revealed answer, ya dunce!")
+    if input.len() != 1 {
+        message = "Input must be one character"
     }
+    else if wrong_guesses.contains(&character) || correct_guesses.contains(&character)
+    {
+        message = "You gave a previously revealed answer, ya dunce!"
+    }
+
+    if !message.is_empty() {
+        return Err(message);
+    }
+
+    Ok(())
 }
 
 // one-time abstraction to make code more readable
@@ -161,7 +170,6 @@ fn main() -> Result<(), GetWordsError> {
 
     // Game loop
     loop {
-
         use GameState as GS;
         let state: GS = if correct_guesses.len() >= word.len() {
             GS::Won
@@ -208,16 +216,16 @@ fn main() -> Result<(), GetWordsError> {
                                         .validate_with(|s: &String| validate_input(s, &wrong_guesses, &correct_guesses))
                                         .interact_text()
                                         .unwrap()
-                                        .to_lowercase();
+                                        .to_lowercase()
+                                        .chars().next()
+                                        .unwrap();
         
         let amount_correct_guesses_old = correct_guesses.len();
         let amount_wrong_guesses_old = wrong_guesses.len();
-        for letter in guess.chars() {
-            if word.contains(letter) {
-                correct_guesses.push(letter);
-            } else {
-                wrong_guesses.push(letter);
-            }
+        if word.contains(guess) {
+            correct_guesses.push(guess);
+        } else {
+            wrong_guesses.push(guess);
         }
         println!("{} Letters correct & {} letters wrong.", correct_guesses.len() - amount_correct_guesses_old, wrong_guesses.len() - amount_wrong_guesses_old);
         sleep(Duration::from_secs(1));
