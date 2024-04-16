@@ -1,6 +1,6 @@
 workspace = { members = ["solver"] }
 [package]
-name = "rust-project"
+name = "rust_hangman"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.3", features = ["derive"] }
-clearscreen = "2.0.1"
+clearscreen = "3.0.0"
 dialoguer = "0.11.0"
 rand = "0.8.5"
 snafu = "0.8.2"

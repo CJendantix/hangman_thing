@@ -50,7 +50,7 @@ fn main() {
                             )
                             .collect::<Vec<String>>();
 
-    words.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    words.sort_by_key(|a| a.to_lowercase());
 
     for word in words {println!("{}", word)}
 
