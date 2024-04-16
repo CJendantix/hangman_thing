@@ -3,7 +3,7 @@ use std::{ops::RangeInclusive, time::Duration};
 use std::path::{Path, PathBuf};
 use std::io;
 use std::io::BufRead;
-use rand::Rng;
+use rand::prelude::SliceRandom;
 use dialoguer::{theme::ColorfulTheme, Input};
 use clearscreen::clear;
 use snafu::{ResultExt, Snafu};
@@ -41,15 +41,6 @@ enum ParseRangeError {
     StartOutOfBounds { value: [usize; 2] },
 }
 
-#[derive(Debug, Snafu)]
-enum GetWordsError {
-    #[snafu(display("Problem Opening the words list"))]
-    Unexpected { source: io::Error, unopenable_file: PathBuf },
-
-    #[snafu(display("Words List is empty!"))]
-    Empty { empty_file: PathBuf }
-}
-
 fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError> {
     let found: Vec<&str> = argument.split(':').collect();
     if found.len() != 2
@@ -68,38 +59,51 @@ fn parse_range(argument: &str) -> Result<RangeInclusive<usize>, ParseRangeError>
     Ok(start..=end)
 }
 
-// Fallible function that tries to return a vector of every line in a file
-fn get_words(path: &Path) -> Result<Vec<String>, GetWordsError> {
-    let reader = io::BufReader::new(std::fs::File::open(path).with_context(|_| UnexpectedSnafu { unopenable_file: path })?);
+#[derive(Debug, Snafu)]
+enum GetWordsError {
+    #[snafu(display("Problem Opening the words list, try running with --help!"))]
+    Unexpected { source: io::Error, unopenable_file: PathBuf },
 
-    let lines = reader.lines().collect::<Result<Vec<String>, io::Error>>()
-        .with_context(|_| UnexpectedSnafu { unopenable_file: path })?;
-    
+    #[snafu(display("Words List is empty!"))]
+    Empty { empty_file: PathBuf }
+}
+
+// Fallible function that tries to return a vector of every line in a file
+fn get_words_list(path: &Path) -> Result<Vec<String>, GetWordsError> {
+    let lines: Result<Vec<String>, io::Error> = io::BufReader::new(std::fs::File::open(path).with_context(|_| UnexpectedSnafu { unopenable_file: path })?)
+        .lines()
+        .collect();
+
+    let lines = lines.with_context(|_| UnexpectedSnafu { unopenable_file: path })?;
+
     if lines.is_empty() {
-        Err( GetWordsError::Empty { empty_file: PathBuf::from(path) } )
-    } else {
-        Ok( lines )
+        return Err(GetWordsError::Empty { empty_file: PathBuf::from(path) });
     }
+
+    Ok(lines)
 }
 
 // Abstraction to make code more readable,
 // finds a random line in a file and returns it if it's length
 // is within the bounds of the range
-fn get_word(word_length: &RangeInclusive<usize>, file_path: &Path ) -> Result<String, GetWordsError> {
+fn get_word(word_length: &RangeInclusive<usize>, path: &Path ) -> Result<String, GetWordsError> {
     let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
-    let words: Vec<String> = get_words(file_path)?;
-    loop {
-        let word: &String = &words[rng.gen_range(0..words.len())];
-        if word_length.contains(&word.len()) {
-            return Ok(word.to_string());
-        }
-    };
+    let words: Vec<String> = get_words_list(path)?
+        .into_iter()
+        .filter(|word| word_length.contains(&word.len()))
+        .collect();
+    
+    if words.is_empty() {
+        return Err(GetWordsError::Empty { empty_file: PathBuf::from(path) });
+    }
+
+    Ok(words.choose(&mut rng).unwrap().to_string())
 }
 
 // Simple function to display only the characters in a specified subset, like this:
 // if word = "hello", and the list contained ['h', 'l'], it would return
 // "h _ l l _ "
-fn generate_hangman_word_display(correct_guesses: &[char], word: &str) -> String {
+fn handman_display(correct_guesses: &[char], word: &str) -> String {
     let mut correct_letter_display = String::new();
         for character in word.chars() {
             if correct_guesses.contains(&character) {
@@ -112,7 +116,7 @@ fn generate_hangman_word_display(correct_guesses: &[char], word: &str) -> String
 }
 
 // Simple function to generate a comma-seperated list of characters
-fn generate_list_of_character_display(characters: &[char]) -> String {
+fn character_list_display(characters: &[char]) -> String {
     let mut final_string = String::new();
     for guess in characters.iter().enumerate() {
         if guess.0 == 0 {
@@ -170,7 +174,7 @@ fn main() -> Result<(), GetWordsError> {
         let wrong_guesses_remaining = args.wrong_guesses_allowed - wrong_guesses.len();
         match state {
             GameState::Playing => {
-                println!("{}\n", generate_hangman_word_display(&correct_guesses, &word));
+                println!("{}\n", handman_display(&correct_guesses, &word));
 
                 if !wrong_guesses.is_empty() {
 
@@ -180,7 +184,7 @@ fn main() -> Result<(), GetWordsError> {
                         println!("Only {} Incorrect Guess{} Left!\n", wrong_guesses_remaining, suffix(wrong_guesses_remaining));
                     }
 
-                    println!("Wrong Guesses: {}\n", generate_list_of_character_display(&wrong_guesses));
+                    println!("Wrong Guesses: {}\n", character_list_display(&wrong_guesses));
                 }
             }
             
