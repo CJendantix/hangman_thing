@@ -219,15 +219,14 @@ fn main() -> Result<(), GetWordsError> {
                                         .to_lowercase()
                                         .chars().next()
                                         .unwrap();
-        
-        let amount_correct_guesses_old = correct_guesses.len();
-        let amount_wrong_guesses_old = wrong_guesses.len();
         if word.contains(guess) {
+            println!("Correct");
             correct_guesses.push(guess);
         } else {
+            println!("Incorrect");
             wrong_guesses.push(guess);
         }
-        println!("{} Letters correct & {} letters wrong.", correct_guesses.len() - amount_correct_guesses_old, wrong_guesses.len() - amount_wrong_guesses_old);
+
         sleep(Duration::from_secs(1));
 
         clear().expect("failed to clear screen");
